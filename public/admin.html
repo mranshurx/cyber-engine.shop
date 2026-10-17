@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aimhack Admin Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white flex items-center justify-center min-h-screen px-4 py-8">
+
+    <div class="bg-gray-900 border border-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-lg">
+        <h1 class="text-2xl font-bold text-center mb-6 text-blue-500 tracking-wide">🔐 AIMHACK ADMIN PORTAL</h1>
+
+        <!-- Admin Login Card -->
+        <div id="admin-login-sec">
+            <label class="block text-sm text-gray-400 mb-2">Admin Security Password</label>
+            <input type="password" id="admin-pass" placeholder="Enter Admin Password" 
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 mb-4 text-white focus:outline-none focus:border-blue-500">
+            <button onclick="adminLogin()" class="w-full bg-blue-600 hover:bg-blue-700 font-semibold py-3 rounded-lg transition">Login to Admin</button>
+            <p id="admin-error" class="text-red-400 text-sm mt-3 text-center"></p>
+        </div>
+
+        <!-- Admin Dashboard Card -->
+        <div id="admin-dashboard-sec" class="hidden">
+            <div class="bg-gray-800 border border-gray-700 p-4 rounded-xl mb-6">
+                <h2 class="text-md font-bold text-gray-200 mb-3">Generate Custom Key</h2>
+                <input type="text" id="new-key" placeholder="Key String (e.g. AMHK-USER-123)" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none">
+
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <div>
+                        <label class="text-xs text-gray-400">Days</label>
+                        <input type="number" id="key-days" value="1" min="0" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-center">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400">Hours</label>
+                        <input type="number" id="key-hours" value="0" min="0" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-center">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400">Minutes</label>
+                        <input type="number" id="key-minutes" value="0" min="0" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-center">
+                    </div>
+                </div>
+
+                <button onclick="createKey()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg">
+                    Generate Key
+                </button>
+            </div>
+
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Active Keys List</h3>
+            <div id="keys-list" class="max-h-60 overflow-y-auto space-y-2 text-xs mb-6">
+                <!-- Keys rendered dynamically -->
+            </div>
+
+            <button onclick="adminLogout()" class="w-full text-gray-500 hover:text-gray-400 text-sm">Logout Admin</button>
+        </div>
+    </div>
+
+    <script>
+        let adminAuthToken = "";
+
+        async function adminLogin() {
+            const password = document.getElementById('admin-pass').value;
+            const err = document.getElementById('admin-error');
+            err.innerText = "";
+
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                adminAuthToken = password;
+                document.getElementById('admin-login-sec').classList.add('hidden');
+                document.getElementById('admin-dashboard-sec').classList.remove('hidden');
+                loadKeys();
+            } else {
+                err.innerText = data.message;
+            }
+        }
+
+        async function createKey() {
+            const key = document.getElementById('new-key').value.trim();
+            const days = document.getElementById('key-days').value;
+            const hours = document.getElementById('key-hours').value;
+            const minutes = document.getElementById('key-minutes').value;
+
+            if (!key) return alert("Enter key string!");
+
+            const res = await fetch('/api/admin/create-key', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-admin-auth': adminAuthToken 
+                },
+                body: JSON.stringify({ key, days, hours, minutes })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert("Key Generated Successfully!");
+                document.getElementById('new-key').value = "";
+                loadKeys();
+            } else {
+                alert(data.message);
+            }
+        }
+
+        async function loadKeys() {
+            const res = await fetch('/api/admin/keys', {
+                headers: { 'x-admin-auth': adminAuthToken }
+            });
+            const data = await res.json();
+            const container = document.getElementById('keys-list');
+            container.innerHTML = "";
+
+            data.keys.forEach(k => {
+                const expires = new Date(k.expiresAt).toLocaleString();
+                container.innerHTML += `
+                    <div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center border border-gray-700">
+                        <div>
+                            <div class="font-bold text-gray-200 text-sm">${k.key}</div>
+                            <div class="text-[11px] text-gray-400">Expires: ${expires}</div>
+                        </div>
+                        <button onclick="revokeKey('${k.key}')" class="bg-red-900/40 border border-red-500/40 text-red-400 hover:bg-red-900/60 font-bold px-3 py-1 rounded text-xs">Delete</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function revokeKey(key) {
+            if (!confirm(`Delete key ${key}?`)) return;
+            await fetch('/api/admin/delete-key', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-admin-auth': adminAuthToken
+                },
+                body: JSON.stringify({ key })
+            });
+            loadKeys();
+        }
+
+        function adminLogout() {
+            adminAuthToken = "";
+            document.getElementById('admin-dashboard-sec').classList.add('hidden');
+            document.getElementById('admin-login-sec').classList.remove('hidden');
+            document.getElementById('admin-pass').value = "";
+        }
+    </script>
+</body>
+</html>
