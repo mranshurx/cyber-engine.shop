@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Admin Security Password (Change this to whatever password you want!)
+// Admin Security Password
 const ADMIN_SECRET = "AimhackAdmin2026";
 
 // In-Memory Database (Keys storage)
@@ -29,7 +29,6 @@ const checkAdminAuth = (req, res, next) => {
 
 // --- ADMIN API ENDPOINTS ---
 
-// Admin Login Check
 app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_SECRET) {
@@ -38,7 +37,6 @@ app.post('/api/admin/login', (req, res) => {
     res.status(401).json({ success: false, message: "Invalid Admin Password." });
 });
 
-// Admin: Create Key with Custom Days, Hours, or Minutes
 app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
     const { key, days = 0, hours = 0, minutes = 0 } = req.body;
 
@@ -64,12 +62,10 @@ app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
     res.json({ success: true, message: "License generated!", data: activeLicenses[key] });
 });
 
-// Admin: List All Keys
 app.get('/api/admin/keys', checkAdminAuth, (req, res) => {
     res.json({ success: true, keys: Object.values(activeLicenses) });
 });
 
-// Admin: Revoke/Delete Key
 app.post('/api/admin/delete-key', checkAdminAuth, (req, res) => {
     const { key } = req.body;
     if (activeLicenses[key]) {
@@ -82,7 +78,6 @@ app.post('/api/admin/delete-key', checkAdminAuth, (req, res) => {
 
 // --- CLIENT API ENDPOINTS ---
 
-// Client: Verify Key & Get Expiration
 app.post('/api/verify', (req, res) => {
     const { key } = req.body;
     const license = activeLicenses[key];
@@ -106,14 +101,23 @@ app.post('/api/verify', (req, res) => {
     });
 });
 
-// Client: Dynamic JSON Config Generator
+// DYNAMIC SUBSCRIPTION API FOR HAPP
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
+    const now = new Date();
 
-    if (!license || license.status !== "active" || new Date(license.expiresAt) < new Date()) {
-        return res.status(403).json({ error: "Unauthorized or Expired License Key" });
+    if (!license || license.status !== "active" || new Date(license.expiresAt) < now) {
+        if (license) license.status = "expired";
+        res.setHeader('profile-title', 'KEY EXPIRED ❌');
+        return res.status(403).send("KEY EXPIRED - Renewal required.");
     }
+
+    const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
+
+    res.setHeader('profile-title', `Aimhack [${key.slice(-4)}]`);
+    res.setHeader('Subscription-Userinfo', `expire=${expireUnix}`);
+    res.setHeader('Content-Type', 'application/json');
 
     const jsonConfig = {
       "remarks": `Aimhack-${key.slice(-4)}`,
@@ -185,11 +189,9 @@ app.get('/api/get-config', (req, res) => {
       }
     };
 
-    res.setHeader('Content-Type', 'application/json');
     res.json(jsonConfig);
 });
 
-// Serve Admin HTML Page on /admin
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
