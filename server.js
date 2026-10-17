@@ -5,16 +5,15 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Temporary mock database for keys (You can connect MongoDB/PostgreSQL later)
-// In a real setup, keys would come from your Admin panel database
+// Mock active licenses (Connect your MongoDB/Database here later)
 const activeLicenses = {
     "AMHK-05AF-AB2E-A78E": {
-        expiresAt: "2030-12-31T23:59:59Z", // Change expiration as needed for testing
+        expiresAt: "2030-12-31T23:59:59Z",
         status: "active"
     }
 };
 
-// API: Verify License Key for the Website UI
+// Verify key endpoint
 app.post('/api/verify', (req, res) => {
     const { key } = req.body;
     const license = activeLicenses[key];
@@ -31,16 +30,16 @@ app.post('/api/verify', (req, res) => {
     res.json({ success: true, message: "License verified successfully!" });
 });
 
-// API: Dynamic JSON Config Generator for Happ App
+// Dynamic JSON Config Endpoint
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
 
     if (!license || license.status !== "active" || new Date(license.expiresAt) < new Date()) {
-        return res.status(403).send("Unauthorized or Expired License Key");
+        return res.status(403).json({ error: "Unauthorized or Expired License Key" });
     }
 
-    // Your exact JSON configuration template
+    // Your exact Xray / Free Fire proxy JSON structure
     const jsonConfig = {
       "remarks": `Aimhack-${key.slice(-4)}`,
       "inbounds": [
@@ -92,7 +91,7 @@ app.get('/api/get-config', (req, res) => {
             },
             "hysteriaSettings": {
               "version": 2,
-              "auth": key // Uses the verified key as the authentication token
+              "auth": key
             }
           }
         },
