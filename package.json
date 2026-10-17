@@ -1,7 +1,7 @@
 {
   "name": "aimhack-proxy-portal",
   "version": "1.0.0",
-  "description": "Proxy license portal and dynamic config generator",
+  "description": "Proxy license portal and dynamic config generator with separate admin panel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
