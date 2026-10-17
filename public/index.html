@@ -37,11 +37,11 @@
 
             <!-- Success Notification -->
             <div id="copied-toast" class="hidden bg-gray-800 border border-blue-500/40 text-blue-300 p-3 rounded-lg text-xs mb-4">
-                📋 JSON Config Copied to Clipboard!<br>Opening Happ...
+                📋 JSON Config Copied to Clipboard!<br>Launching Happ App...
             </div>
 
             <p class="text-xs text-gray-500 mb-6 leading-relaxed">
-                Clicking <b class="text-gray-400">Add to Happ</b> automatically copies your raw JSON configuration to your phone clipboard and opens the Happ app.
+                Once Happ opens, tap <b class="text-gray-300">+</b> at the top right and select <b class="text-gray-300">Import from Clipboard</b>.
             </p>
 
             <button onclick="logout()" class="text-gray-500 hover:text-gray-400 text-sm">Log out</button>
@@ -107,17 +107,23 @@
                     document.body.removeChild(textArea);
                 }
 
-                // 3. Show confirmation feedback UI
+                // 3. Show notification
                 const toast = document.getElementById('copied-toast');
                 toast.classList.remove('hidden');
 
-                // 4. Automatically trigger opening Happ on phone
+                // 4. Launch Happ App using its specific deep link schema path
                 setTimeout(() => {
-                    window.location.href = "happ://";
-                }, 800);
+                    // Method A: Direct deep link path registered by Happ app
+                    window.location.href = "happ://add/";
+                    
+                    // Fallback Method B: Alternative scheme fallback if happ://add/ is blocked
+                    setTimeout(() => {
+                        window.location.href = "happ://open";
+                    }, 500);
+                }, 300);
 
             } catch (err) {
-                alert("Failed to copy JSON configuration.");
+                alert("Failed to fetch configuration.");
             }
         }
 
