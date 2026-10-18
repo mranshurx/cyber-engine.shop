@@ -19,7 +19,7 @@ function loadKeys() {
         "AMHK-DEMO-KEY": {
             key: "AMHK-DEMO-KEY",
             createdAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            expiresAt: new Date("2026-11-15T00:00:00.000Z").toISOString(),
             status: "active"
         }
     };
@@ -48,8 +48,14 @@ app.post('/api/admin/login', (req, res) => {
 app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
     const { key, days = 0, hours = 0, minutes = 0 } = req.body;
     if (!key) return res.status(400).json({ success: false, message: "Key required" });
+    
+    // Calculate precise duration based on input
     const durationMs = (parseInt(days) * 86400 + parseInt(hours) * 3600 + parseInt(minutes) * 60) * 1000;
+    if (durationMs <= 0) return res.status(400).json({ success: false, message: "Invalid duration" });
+
+    // Lock in exact expiration date
     const expiresAt = new Date(Date.now() + durationMs).toISOString();
+
     activeLicenses[key] = { key, createdAt: new Date().toISOString(), expiresAt, status: "active" };
     saveKeys(activeLicenses);
     res.json({ success: true, data: activeLicenses[key] });
@@ -78,19 +84,24 @@ app.post('/api/verify', (req, res) => {
     res.json({ success: true, expiresAt: license.expiresAt });
 });
 
+// DYNAMIC CONFIG API (ENFORCES KEY'S EXACT SAVED EXPIRATION TIMESTAMP)
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
-    if (!license || license.status !== "active" || new Date(license.expiresAt) < new Date()) {
-        return res.status(403).json({ error: "Invalid or expired key" });
-    }
-    const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
-    res.setHeader('profile-title', `Aimhack-${key.slice(-4)}`);
-    res.setHeader('subscription-userinfo', `upload=0; download=0; total=0; expire=${expireUnix}`);
-    res.setHeader('profile-update-interval', '1');
-    res.setHeader('Content-Type', 'application/json');
 
-    res.json({
+    if (!license || license.status !== "active" || new Date(license.expiresAt) < new Date()) {
+        if (license) {
+            license.status = "expired";
+            saveKeys(activeLicenses);
+        }
+        return res.status(403).send("Key Expired or Invalid");
+    }
+
+    // Exact Unix Timestamp for the key's saved expiration date
+    const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
+    const totalBytesQuota = 74109405568; // 69.0 GB Display
+
+    const jsonConfig = {
       "remarks": `Aimhack-${key.slice(-4)}`,
       "inbounds": [
         { "tag": "socks", "listen": "127.0.0.1", "port": 10808, "protocol": "socks", "settings": { "auth": "noauth", "udp": true } },
@@ -115,7 +126,16 @@ app.get('/api/get-config', (req, res) => {
           { "type": "field", "network": "tcp,udp", "outboundTag": "direct" }
         ]
       }
-    });
+    };
+
+    const subscriptionPayload = 
+        `#profile-title: AIMHACK\n` +
+        `#subscription-userinfo: upload=0; download=0; total=${totalBytesQuota}; expire=${expireUnix}\n` +
+        `#profile-update-interval: 1\n\n` +
+        JSON.stringify(jsonConfig, null, 2);
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(subscriptionPayload);
 });
 
 const PORT = process.env.PORT || 10000;
