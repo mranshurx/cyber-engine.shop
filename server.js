@@ -8,7 +8,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Admin Password
 const ADMIN_SECRET = "AimhackAdmin2026";
 
-// Keys Database
+// License Keys Storage
 let activeLicenses = {
     "AMHK-DEMO-KEY": {
         key: "AMHK-DEMO-KEY",
@@ -35,7 +35,7 @@ app.post('/api/admin/login', (req, res) => {
 
 app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
     const { key, days = 0, hours = 0, minutes = 0 } = req.body;
-    if (!key) return res.status(400).json({ success: false, message: "Key string required." });
+    if (!key) return res.status(400).json({ success: false, message: "Key required." });
 
     const durationMs = (parseInt(days) * 86400 + parseInt(hours) * 3600 + parseInt(minutes) * 60) * 1000;
     if (durationMs <= 0) return res.status(400).json({ success: false, message: "Invalid duration." });
@@ -49,7 +49,7 @@ app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
         status: "active"
     };
 
-    res.json({ success: true, message: "License generated!", data: activeLicenses[key] });
+    res.json({ success: true, message: "Key generated successfully!", data: activeLicenses[key] });
 });
 
 app.get('/api/admin/keys', checkAdminAuth, (req, res) => {
@@ -84,29 +84,20 @@ app.post('/api/verify', (req, res) => {
     res.json({ success: true, expiresAt: license.expiresAt });
 });
 
-// DYNAMIC SUBSCRIPTION API (TRIGGER HAPP TIMER + ENFORCE EXPIRATION)
+// DYNAMIC SUBSCRIPTION WITH BODY COMMENTS FOR HAPP TIMER
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
     const now = new Date();
 
-    // 1. IF EXPIRED OR INVALID -> RETURN 403 FORBIDDEN TO STOP CONNECTIONS
     if (!license || license.status !== "active" || new Date(license.expiresAt) < now) {
         if (license) license.status = "expired";
-        res.setHeader('profile-title', 'EXPIRED - RENEW REQUIRED ❌');
-        return res.status(403).send("Key Expired");
+        return res.status(403).send("Key Expired or Invalid");
     }
 
-    // 2. CALCULATE UNIX TIMESTAMP FOR HAPP COUNTDOWN TIMER
+    // Convert Expiration Date to Unix Timestamp (Seconds)
     const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
 
-    // 3. SET STANDARD HAPP SUBSCRIPTION HEADERS FOR VISUAL TIMER
-    res.setHeader('profile-title', `Aimhack-${key.slice(-4)}`);
-    res.setHeader('subscription-userinfo', `upload=0; download=0; total=0; expire=${expireUnix}`);
-    res.setHeader('profile-update-interval', '1'); // Auto-checks server every 1 hour
-    res.setHeader('Content-Type', 'application/json');
-
-    // 4. RETURN FULL UNTRUNCATED JSON WITH USER KEY INJECTED
     const jsonConfig = {
       "remarks": `Aimhack-${key.slice(-4)}`,
       "inbounds": [
@@ -242,7 +233,14 @@ app.get('/api/get-config', (req, res) => {
       }
     };
 
-    res.json(jsonConfig);
+    // Format response payload with comment headers on top so Happ renders the live timer UI
+    const payload = `#profile-title: Aimhack-${key.slice(-4)}\n` +
+                    `#subscription-userinfo: upload=0; download=0; total=0; expire=${expireUnix}\n` +
+                    `#profile-update-interval: 1\n\n` +
+                    JSON.stringify(jsonConfig, null, 2);
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(payload);
 });
 
 app.get('/admin', (req, res) => {
