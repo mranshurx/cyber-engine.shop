@@ -4,12 +4,11 @@ const fs = require('fs');
 const app = express();
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 const ADMIN_SECRET = "AimhackAdmin2026";
 const KEYS_FILE = path.join(__dirname, 'keys.json');
 
-// Helper to Load Keys from Disk
+// Helper: Load Keys from Disk
 function loadKeys() {
     try {
         if (fs.existsSync(KEYS_FILE)) {
@@ -29,7 +28,7 @@ function loadKeys() {
     };
 }
 
-// Helper to Save Keys to Disk
+// Helper: Save Keys to Disk
 function saveKeys(keys) {
     try {
         fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), 'utf8');
@@ -48,7 +47,7 @@ const checkAdminAuth = (req, res, next) => {
     next();
 };
 
-// --- ADMIN ENDPOINTS ---
+// --- ADMIN API ENDPOINTS ---
 
 app.post('/api/admin/login', (req, res) => {
     if (req.body.password === ADMIN_SECRET) return res.json({ success: true });
@@ -89,7 +88,7 @@ app.post('/api/admin/delete-key', checkAdminAuth, (req, res) => {
     res.status(404).json({ success: false, message: "Key not found." });
 });
 
-// --- CLIENT ENDPOINTS ---
+// --- CLIENT API ENDPOINTS ---
 
 app.post('/api/verify', (req, res) => {
     const { key } = req.body;
@@ -108,7 +107,7 @@ app.post('/api/verify', (req, res) => {
     res.json({ success: true, expiresAt: license.expiresAt });
 });
 
-// DYNAMIC CONFIG API (SERVES CLEAN JSON + HAPP HEADERS)
+// DYNAMIC CONFIG API (SERVES CLEAN JSON + HAPP TIMER HEADERS)
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
@@ -124,7 +123,7 @@ app.get('/api/get-config', (req, res) => {
 
     const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
 
-    // Happ headers for visual timer when imported via URL
+    // Set Happ Headers
     res.setHeader('profile-title', `Aimhack-${key.slice(-4)}`);
     res.setHeader('subscription-userinfo', `upload=0; download=0; total=0; expire=${expireUnix}`);
     res.setHeader('profile-update-interval', '1');
@@ -268,9 +267,34 @@ app.get('/api/get-config', (req, res) => {
     res.json(jsonConfig);
 });
 
-app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+// --- EMBEDDED MAIN CLIENT WEBSITE HTML ROUTE ---
+app.get('/', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aimhack Proxy Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white flex items-center justify-center min-h-screen px-4">
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    <div class="bg-gray-900 border border-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
+        <h1 class="text-2xl font-bold mb-6 text-red-500 tracking-wide">AIMHACK PORTAL</h1>
+
+        <!-- Login Section -->
+        <div id="login-section">
+            <label class="block text-sm text-gray-400 mb-2 text-left">Enter License Key</label>
+            <input type="text" id="license-key" placeholder="AMHK-XXXX-XXXX-XXXX" 
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 mb-4 text-white focus:outline-none focus:border-red-500">
+            <button onclick="verifyLicense()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition active:scale-95">
+                Verify License Key
+            </button>
+            <p id="error-msg" class="text-red-400 text-sm mt-3"></p>
+        </div>
+
+        <!-- Dashboard Section -->
+        <div id="dashboard-section" class="hidden">
+            <div class="bg-green-900/30 border border-green-500/50 text-green-400 py-2 rounded-lg mb-4 text-sm font-medium">
+                License Key Active
