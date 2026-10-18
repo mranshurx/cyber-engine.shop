@@ -1,22 +1,44 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Admin Password
 const ADMIN_SECRET = "AimhackAdmin2026";
+const KEYS_FILE = path.join(__dirname, 'keys.json');
 
-// License Keys Storage
-let activeLicenses = {
-    "AMHK-DEMO-KEY": {
-        key: "AMHK-DEMO-KEY",
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 Hours
-        status: "active"
+// Helper to Load Keys from Disk
+function loadKeys() {
+    try {
+        if (fs.existsSync(KEYS_FILE)) {
+            const data = fs.readFileSync(KEYS_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error("Error reading keys.json:", e);
     }
-};
+    return {
+        "AMHK-DEMO-KEY": {
+            key: "AMHK-DEMO-KEY",
+            createdAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            status: "active"
+        }
+    };
+}
+
+// Helper to Save Keys to Disk
+function saveKeys(keys) {
+    try {
+        fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), 'utf8');
+    } catch (e) {
+        console.error("Error saving keys.json:", e);
+    }
+}
+
+let activeLicenses = loadKeys();
 
 const checkAdminAuth = (req, res, next) => {
     const adminPassword = req.headers['x-admin-auth'];
@@ -49,6 +71,7 @@ app.post('/api/admin/create-key', checkAdminAuth, (req, res) => {
         status: "active"
     };
 
+    saveKeys(activeLicenses);
     res.json({ success: true, message: "Key generated successfully!", data: activeLicenses[key] });
 });
 
@@ -60,11 +83,11 @@ app.post('/api/admin/delete-key', checkAdminAuth, (req, res) => {
     const { key } = req.body;
     if (activeLicenses[key]) {
         delete activeLicenses[key];
+        saveKeys(activeLicenses);
         return res.json({ success: true, message: `Key ${key} deleted.` });
     }
     res.status(404).json({ success: false, message: "Key not found." });
 });
-
 
 // --- CLIENT ENDPOINTS ---
 
@@ -78,25 +101,34 @@ app.post('/api/verify', (req, res) => {
 
     if (new Date(license.expiresAt) < new Date()) {
         license.status = "expired";
+        saveKeys(activeLicenses);
         return res.status(403).json({ success: false, message: "Key has expired." });
     }
 
     res.json({ success: true, expiresAt: license.expiresAt });
 });
 
-// DYNAMIC SUBSCRIPTION WITH BODY COMMENTS FOR HAPP TIMER
+// DYNAMIC CONFIG API (SERVES CLEAN JSON + HAPP HEADERS)
 app.get('/api/get-config', (req, res) => {
     const { key } = req.query;
     const license = activeLicenses[key];
     const now = new Date();
 
     if (!license || license.status !== "active" || new Date(license.expiresAt) < now) {
-        if (license) license.status = "expired";
-        return res.status(403).send("Key Expired or Invalid");
+        if (license) {
+            license.status = "expired";
+            saveKeys(activeLicenses);
+        }
+        return res.status(403).json({ error: "Key Expired or Invalid" });
     }
 
-    // Convert Expiration Date to Unix Timestamp (Seconds)
     const expireUnix = Math.floor(new Date(license.expiresAt).getTime() / 1000);
+
+    // Happ headers for visual timer when imported via URL
+    res.setHeader('profile-title', `Aimhack-${key.slice(-4)}`);
+    res.setHeader('subscription-userinfo', `upload=0; download=0; total=0; expire=${expireUnix}`);
+    res.setHeader('profile-update-interval', '1');
+    res.setHeader('Content-Type', 'application/json');
 
     const jsonConfig = {
       "remarks": `Aimhack-${key.slice(-4)}`,
@@ -233,14 +265,7 @@ app.get('/api/get-config', (req, res) => {
       }
     };
 
-    // Format response payload with comment headers on top so Happ renders the live timer UI
-    const payload = `#profile-title: Aimhack-${key.slice(-4)}\n` +
-                    `#subscription-userinfo: upload=0; download=0; total=0; expire=${expireUnix}\n` +
-                    `#profile-update-interval: 1\n\n` +
-                    JSON.stringify(jsonConfig, null, 2);
-
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(payload);
+    res.json(jsonConfig);
 });
 
 app.get('/admin', (req, res) => {
